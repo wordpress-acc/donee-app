@@ -27,6 +27,17 @@ export default async function DashboardPage() {
   ])
 
   const isDeveloper = !isSuperAdmin(profile, workspaceMember) && !isPM(profile, workspaceMember)
+  const isProjectManager = isPM(profile, workspaceMember) && !isSuperAdmin(profile, workspaceMember)
+
+  // For PMs, scope to projects they manage
+  let pmProjectIds = null
+  if (isProjectManager) {
+    const { data: managerships } = await supabase
+      .from('project_managers')
+      .select('project_id')
+      .eq('user_id', user.id)
+    pmProjectIds = (managerships ?? []).map((m) => m.project_id)
+  }
 
   // For developers, scope to projects they're a member of or have assigned tasks
   let devProjectIds = null
@@ -41,8 +52,9 @@ export default async function DashboardPage() {
     ])]
   }
 
-  const noProjects = isDeveloper && devProjectIds.length === 0
+  const noProjects = (isDeveloper && devProjectIds.length === 0) || (isProjectManager && pmProjectIds.length === 0)
   const nullId = '00000000-0000-0000-0000-000000000000'
+  const scopedProjectIds = isDeveloper ? devProjectIds : isProjectManager ? pmProjectIds : null
 
   // ── Stats ───────────────────────────────────────────────
   let projectCountQuery = supabase.from('projects').select('*', { count: 'exact', head: true })
@@ -52,15 +64,15 @@ export default async function DashboardPage() {
   let completedCountQuery = supabase.from('tasks').select('*', { count: 'exact', head: true })
     .eq('workspace_id', workspaceId).eq('status', 'done')
 
-  if (isDeveloper) {
+  if (scopedProjectIds !== null) {
     if (noProjects) {
       projectCountQuery = projectCountQuery.eq('id', nullId)
       taskCountQuery = taskCountQuery.eq('id', nullId)
       completedCountQuery = completedCountQuery.eq('id', nullId)
     } else {
-      projectCountQuery = projectCountQuery.in('id', devProjectIds)
-      taskCountQuery = taskCountQuery.in('project_id', devProjectIds)
-      completedCountQuery = completedCountQuery.in('project_id', devProjectIds)
+      projectCountQuery = projectCountQuery.in('id', scopedProjectIds)
+      taskCountQuery = taskCountQuery.in('project_id', scopedProjectIds)
+      completedCountQuery = completedCountQuery.in('project_id', scopedProjectIds)
     }
   }
 
@@ -118,7 +130,7 @@ export default async function DashboardPage() {
     .from('projects')
     .select(
       `id, name, description, color,
-       pm:profiles!projects_pm_id_fkey(id, full_name, avatar_url),
+       project_managers(user:profiles!project_managers_user_id_fkey(id, full_name, avatar_url)),
        tasks(status)`
     )
     .eq('workspace_id', workspaceId)
@@ -126,10 +138,10 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
     .limit(12)
 
-  if (isDeveloper) {
+  if (scopedProjectIds !== null) {
     projectGridQuery = noProjects
       ? projectGridQuery.eq('id', nullId)
-      : projectGridQuery.in('id', devProjectIds)
+      : projectGridQuery.in('id', scopedProjectIds)
   }
 
   const { data: projects } = await projectGridQuery

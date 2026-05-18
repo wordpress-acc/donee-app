@@ -17,6 +17,7 @@ const developer = { id: 'dev1', role: 'developer' }
 
 const task = { id: 't1', assigned_to: 'dev1', created_by: 'pm1', project_id: 'p1' }
 const project = { id: 'p1', pm_id: 'pm1' }
+const projectMultiPM = { id: 'p1', project_managers: [{ user: { id: 'pm1' } }, { user: { id: 'pm2' } }] }
 
 describe('ROLES constants', () => {
   it('has the three expected roles', () => {
@@ -81,6 +82,15 @@ describe('canManageProject', () => {
   it('pm cannot manage a project they do not own', () => {
     const otherProject = { id: 'p2', pm_id: 'other_pm' }
     expect(canManageProject(pm, otherProject)).toBe(false)
+  })
+
+  it('pm can manage project via project_managers array', () => {
+    expect(canManageProject(pm, projectMultiPM)).toBe(true)
+  })
+
+  it('pm cannot manage project when not in project_managers array', () => {
+    const other = { id: 'pm3', role: 'pm' }
+    expect(canManageProject(other, projectMultiPM)).toBe(false)
   })
 
   it('developer cannot manage projects', () => {

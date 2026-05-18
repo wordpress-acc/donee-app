@@ -42,7 +42,7 @@ export default async function ProjectPage({ params }) {
     .from('projects')
     .select(
       `*,
-       pm:profiles!projects_pm_id_fkey(id, full_name, avatar_url),
+       project_managers(user:profiles!project_managers_user_id_fkey(id, full_name, avatar_url)),
        members:project_members(user:profiles(id, full_name, avatar_url))`
     )
     .eq('id', id)

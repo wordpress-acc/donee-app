@@ -82,12 +82,19 @@ export default function ProjectPageClient({ project, initialTasks, users, profil
                 <p className="text-slate-500 text-sm mt-1">{project.description}</p>
               )}
               <div className="flex items-center gap-4 mt-3">
-                {project.pm && (
+                {project.project_managers?.length > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-500">PM:</span>
                     <div className="flex items-center gap-1.5">
-                      <Avatar user={project.pm} size="xs" />
-                      <span className="text-xs font-medium text-slate-700">{project.pm.full_name}</span>
+                      <div className="flex -space-x-1">
+                        {project.project_managers.slice(0, 3).map((mgr) => (
+                          <Avatar key={mgr.user.id} user={mgr.user} size="xs" className="ring-1 ring-white" />
+                        ))}
+                      </div>
+                      <span className="text-xs font-medium text-slate-700">
+                        {project.project_managers.slice(0, 2).map((m) => m.user.full_name).join(', ')}
+                        {project.project_managers.length > 2 && ` +${project.project_managers.length - 2}`}
+                      </span>
                     </div>
                   </div>
                 )}

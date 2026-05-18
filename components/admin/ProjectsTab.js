@@ -29,7 +29,7 @@ const PROJECT_COLORS = [
   "#3b82f6",
 ];
 
-const INITIAL_FORM = { name: "", description: "", color: "#6366f1", pm_id: "" };
+const INITIAL_FORM = { name: "", description: "", color: "#6366f1", pm_ids: [] };
 
 async function fetchProjects(workspaceId) {
   const supabase = createClient();
@@ -37,7 +37,7 @@ async function fetchProjects(workspaceId) {
     .from("projects")
     .select(
       `*,
-       pm:profiles!projects_pm_id_fkey(id, full_name, avatar_url),
+       project_managers(user:profiles!project_managers_user_id_fkey(id, full_name, avatar_url)),
        members:project_members(user:profiles(id, full_name, avatar_url, role))`,
     )
     .eq("workspace_id", workspaceId)
@@ -143,21 +143,47 @@ function ProjectFormModal({
             </div>
 
             <div>
-              <label className={labelClass}>Project Manager</label>
-              <select
-                value={form.pm_id}
-                onChange={(e) => update("pm_id", e.target.value)}
-                className={inputClass}
-              >
-                <option value="">— Select PM —</option>
+              <label className={labelClass}>Project Managers</label>
+              <div className="border border-slate-200 dark:border-slate-600 rounded-xl overflow-hidden">
                 {users
                   .filter((u) => u.workspace_role === "pm" || u.workspace_role === "super_admin")
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name}
-                    </option>
-                  ))}
-              </select>
+                  .map((u) => {
+                    const checked = (form.pm_ids ?? []).includes(u.id);
+                    return (
+                      <label
+                        key={u.id}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
+                          checked
+                            ? "bg-indigo-50 dark:bg-indigo-900/20"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            update(
+                              "pm_ids",
+                              e.target.checked
+                                ? [...(form.pm_ids ?? []), u.id]
+                                : (form.pm_ids ?? []).filter((id) => id !== u.id),
+                            )
+                          }
+                          className="w-4 h-4 rounded text-indigo-600 accent-indigo-600"
+                        />
+                        <span className="text-sm text-slate-800 dark:text-slate-100">{u.full_name}</span>
+                        <span className="ml-auto text-xs text-slate-400 capitalize">{u.workspace_role}</span>
+                      </label>
+                    );
+                  })}
+                {users.filter((u) => u.workspace_role === "pm" || u.workspace_role === "super_admin").length === 0 && (
+                  <p className="px-3 py-2.5 text-sm text-slate-400 italic">No PMs in workspace.</p>
+                )}
+              </div>
+              {(form.pm_ids ?? []).length === 0 && (
+                <p className="text-xs text-slate-400 mt-1">No PM assigned.</p>
+              )}
             </div>
           </div>
 
@@ -332,20 +358,30 @@ export default function ProjectsTab({ initialProjects, users, workspaceId }) {
   const createProject = useMutation({
     mutationFn: (form) =>
       supabaseMutate(async (supabase, user) => {
-        const { error } = await supabase.from("projects").insert({
-          workspace_id: workspaceId,
-          name: form.name,
-          description: form.description || null,
-          color: form.color,
-          pm_id: form.pm_id || null,
-          created_by: user.id,
-        });
+        const { data: newProject, error } = await supabase
+          .from("projects")
+          .insert({
+            workspace_id: workspaceId,
+            name: form.name,
+            description: form.description || null,
+            color: form.color,
+            created_by: user.id,
+          })
+          .select("id")
+          .single();
         if (error) throw error;
+        const pmIds = form.pm_ids ?? [];
+        if (pmIds.length > 0) {
+          const { error: pmError } = await supabase.from("project_managers").insert(
+            pmIds.map((uid) => ({ project_id: newProject.id, user_id: uid, assigned_by: user.id })),
+          );
+          if (pmError) throw pmError;
+        }
       }),
     onMutate: async (form) => {
       await qc.cancelQueries({ queryKey: ["admin-projects", workspaceId] });
       const prev = qc.getQueryData(["admin-projects", workspaceId]);
-      const pm = users?.find((u) => u.id === form.pm_id) ?? null;
+      const pmUsers = (form.pm_ids ?? []).map((id) => users?.find((u) => u.id === id)).filter(Boolean);
       qc.setQueryData(["admin-projects", workspaceId], (old) => [
         {
           id: `_temp_${Date.now()}`,
@@ -353,10 +389,9 @@ export default function ProjectsTab({ initialProjects, users, workspaceId }) {
           name: form.name,
           description: form.description || null,
           color: form.color,
-          pm_id: form.pm_id || null,
           is_archived: false,
           created_at: new Date().toISOString(),
-          pm: pm ? { id: pm.id, full_name: pm.full_name, avatar_url: pm.avatar_url } : null,
+          project_managers: pmUsers.map((u) => ({ user: { id: u.id, full_name: u.full_name, avatar_url: u.avatar_url } })),
           members: [],
         },
         ...(old ?? []),
@@ -372,26 +407,36 @@ export default function ProjectsTab({ initialProjects, users, workspaceId }) {
 
   const updateProject = useMutation({
     mutationFn: ({ id, form }) =>
-      supabaseMutate(async (supabase) => {
+      supabaseMutate(async (supabase, user) => {
         const { error } = await supabase
           .from("projects")
-          .update({
-            name: form.name,
-            description: form.description,
-            color: form.color,
-            pm_id: form.pm_id || null,
-          })
+          .update({ name: form.name, description: form.description, color: form.color })
           .eq("id", id);
         if (error) throw error;
+        // Replace all project managers
+        await supabase.from("project_managers").delete().eq("project_id", id);
+        const pmIds = form.pm_ids ?? [];
+        if (pmIds.length > 0) {
+          const { error: pmError } = await supabase.from("project_managers").insert(
+            pmIds.map((uid) => ({ project_id: id, user_id: uid, assigned_by: user.id })),
+          );
+          if (pmError) throw pmError;
+        }
       }),
     onMutate: async ({ id, form }) => {
       await qc.cancelQueries({ queryKey: ["admin-projects", workspaceId] });
       const prev = qc.getQueryData(["admin-projects", workspaceId]);
-      const pm = users?.find((u) => u.id === form.pm_id) ?? null;
+      const pmUsers = (form.pm_ids ?? []).map((uid) => users?.find((u) => u.id === uid)).filter(Boolean);
       qc.setQueryData(["admin-projects", workspaceId], (old) =>
         (old ?? []).map((p) =>
           p.id === id
-            ? { ...p, name: form.name, description: form.description, color: form.color, pm_id: form.pm_id || null, pm: pm ? { id: pm.id, full_name: pm.full_name, avatar_url: pm.avatar_url } : null }
+            ? {
+                ...p,
+                name: form.name,
+                description: form.description,
+                color: form.color,
+                project_managers: pmUsers.map((u) => ({ user: { id: u.id, full_name: u.full_name, avatar_url: u.avatar_url } })),
+              }
             : p,
         ),
       );
@@ -520,17 +565,22 @@ export default function ProjectsTab({ initialProjects, users, workspaceId }) {
                     </div>
                   </td>
                   <td className="px-5 py-3">
-                    {project.pm ? (
+                    {project.project_managers?.length > 0 ? (
                       <div className="flex items-center gap-2">
-                        <Avatar user={project.pm} size="xs" />
-                        <span className="text-slate-600 dark:text-slate-300">
-                          {project.pm.full_name}
+                        <div className="flex -space-x-1">
+                          {project.project_managers.slice(0, 3).map((mgr) => (
+                            <Avatar key={mgr.user.id} user={mgr.user} size="xs" className="ring-1 ring-white dark:ring-slate-800" />
+                          ))}
+                        </div>
+                        <span className="text-slate-600 dark:text-slate-300 text-sm">
+                          {project.project_managers.slice(0, 2).map((m) => m.user.full_name).join(", ")}
+                          {project.project_managers.length > 2 && (
+                            <span className="text-slate-400"> +{project.project_managers.length - 2}</span>
+                          )}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-slate-400 italic text-xs">
-                        No PM
-                      </span>
+                      <span className="text-slate-400 italic text-xs">No PM</span>
                     )}
                   </td>
                   <td className="px-5 py-3 text-slate-500 dark:text-slate-400 text-xs">
@@ -567,7 +617,7 @@ export default function ProjectsTab({ initialProjects, users, workspaceId }) {
                               name: project.name,
                               description: project.description ?? "",
                               color: project.color ?? "#6366f1",
-                              pm_id: project.pm_id ?? "",
+                              pm_ids: (project.project_managers ?? []).map((m) => m.user.id),
                             },
                           })
                         }

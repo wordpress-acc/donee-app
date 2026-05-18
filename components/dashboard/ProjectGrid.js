@@ -44,12 +44,20 @@ export default function ProjectGrid({ projects }) {
                 </div>
               </div>
 
-              {/* PM */}
-              {project.pm && (
+              {/* PMs */}
+              {project.project_managers?.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <Avatar user={project.pm} size="xs" />
+                  <div className="flex -space-x-1">
+                    {project.project_managers.slice(0, 3).map((mgr) => (
+                      <Avatar key={mgr.user.id} user={mgr.user} size="xs" className="ring-1 ring-white dark:ring-slate-800" />
+                    ))}
+                  </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
-                    PM: <span className="font-medium text-slate-700 dark:text-slate-300">{project.pm.full_name}</span>
+                    PM:{' '}
+                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                      {project.project_managers.slice(0, 2).map((m) => m.user.full_name).join(', ')}
+                      {project.project_managers.length > 2 && ` +${project.project_managers.length - 2}`}
+                    </span>
                   </span>
                 </div>
               )}

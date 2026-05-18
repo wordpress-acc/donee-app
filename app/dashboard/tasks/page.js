@@ -49,14 +49,13 @@ export default async function TasksPage({ searchParams }) {
     // sees all tasks in workspace — no extra filter
   } else if (isProjectManager) {
     // PM sees tasks from projects they manage
-    const { data: pmProjects } = await supabase
-      .from('projects')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .eq('pm_id', user.id)
-    const pmProjectIds = (pmProjects ?? []).map((p) => p.id)
+    const { data: managerships } = await supabase
+      .from('project_managers')
+      .select('project_id')
+      .eq('user_id', user.id)
+    const pmProjectIds = (managerships ?? []).map((m) => m.project_id)
     if (pmProjectIds.length === 0) {
-      taskQuery = taskQuery.eq('id', '00000000-0000-0000-0000-000000000000') // return nothing
+      taskQuery = taskQuery.eq('id', '00000000-0000-0000-0000-000000000000')
     } else {
       taskQuery = taskQuery.in('project_id', pmProjectIds)
     }
@@ -76,7 +75,14 @@ export default async function TasksPage({ searchParams }) {
     .order('name')
 
   if (isProjectManager && !isAdmin) {
-    projectQuery = projectQuery.eq('pm_id', user.id)
+    const { data: managerships } = await supabase
+      .from('project_managers')
+      .select('project_id')
+      .eq('user_id', user.id)
+    const pmProjectIds = (managerships ?? []).map((m) => m.project_id)
+    projectQuery = pmProjectIds.length > 0
+      ? projectQuery.in('id', pmProjectIds)
+      : projectQuery.eq('id', '00000000-0000-0000-0000-000000000000')
   } else if (!isAdmin && !isProjectManager) {
     // Developer: only projects they're a member of or have assigned tasks
     const [{ data: memberRows }, { data: assignedRows }] = await Promise.all([
