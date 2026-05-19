@@ -114,6 +114,7 @@ supabase/
   migrations/014_disable_auto_join_workspace.sql  New users do not auto-join; onboarding is create/join
   migrations/004_fix_workspace_rls_recursion.sql  is_workspace_member() helper + non-recursive workspace RLS
   migrations/013_grant_workspace_tables.sql  Grants for workspace tables (Data API / PostgREST)
+  migrations/022_multi_pm_per_project.sql    project_managers join table + RLS + data migration from pm_id
 ```
 
 ## Database Schema (Workspace-aware)
@@ -127,7 +128,11 @@ All tables have RLS enabled.
 - **workspace_members** — (id, workspace_id, user_id, role, joined_at)
 - **workspace_invitations** — (id, workspace_id, email, invite_code, invited_by, created_at, expires_at, accepted_at, accepted_by)
 
-- **projects** — (id, name, description, color hex, pm_id→profiles, created_by, created_at, is_archived)
+- **projects** — (id, name, description, color hex, pm_id→profiles, created_by, created_at, is_archived)  
+  `pm_id` kept for FK alias compat but no longer authoritative — use `project_managers` table instead
+
+- **project_managers** — (id, project_id, user_id, assigned_by, assigned_at) — UNIQUE(project_id, user_id)  
+  Join table replacing single `pm_id`. Multiple PMs per project. RLS uses `get_project_workspace_id()` SECURITY DEFINER to avoid circular dependency with `projects_select`.
 
 - **project_members** — (id, project_id, user_id, joined_at) — UNIQUE(project_id, user_id)
 
@@ -175,6 +180,10 @@ const supabase = createServerSideClient(cookieStore)
   )
   .select(
     "*, members:project_members(user:profiles(id, full_name, avatar_url))",
+  )
+  // project_managers has two FKs to profiles (user_id + assigned_by) — must disambiguate
+  .select(
+    "*, project_managers(user:profiles!project_managers_user_id_fkey(id, full_name, avatar_url))",
   );
 
 // Count query (HEAD)
@@ -225,6 +234,7 @@ import {
 } from "@/lib/permissions";
 // All functions take profile object (from profiles table)
 // canEditTask(profile, task) — super_admin/pm always; dev if assigned_to or created_by
+// canManageProject(profile, project) — checks project.project_managers array; falls back to pm_id
 ```
 
 ## Role Hierarchy
@@ -263,3 +273,4 @@ const unsub = subscribeToNotifications(userId, () => {
 - No toast notifications for mutation errors
 - Dashboard sidebar projects list is server-fetched (doesn't update on new project without refresh)
 - Dark mode is supported (ThemeProvider + topbar toggle)
+  
