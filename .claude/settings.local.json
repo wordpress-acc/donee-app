@@ -11,7 +11,9 @@
       "Bash(security dump-keychain *)",
       "Bash(curl -s -X PATCH 'https://api.vercel.com/v9/projects/prj_K9Dh45daNqjj11rSemcQiYDhZgtF?teamId=team_yGHsMvKWmhPiz8LXC6215v7G' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"framework\":\"nextjs\"}')",
       "Bash(curl -s 'https://api.vercel.com/v6/deployments?projectId=prj_K9Dh45daNqjj11rSemcQiYDhZgtF&teamId=team_yGHsMvKWmhPiz8LXC6215v7G&limit=1' -H 'Authorization: Bearer __TRACKED_VAR__')",
-      "Bash(curl -s -X POST 'https://api.vercel.com/v13/deployments?teamId=team_yGHsMvKWmhPiz8LXC6215v7G&forceNew=1' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"name\":\"donee-dev\",\"deploymentId\":\"dpl_6rMLUBc5hLLX6BZpxh4gykJzMSww\",\"target\":\"production\"}')"
+      "Bash(curl -s -X POST 'https://api.vercel.com/v13/deployments?teamId=team_yGHsMvKWmhPiz8LXC6215v7G&forceNew=1' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"name\":\"donee-dev\",\"deploymentId\":\"dpl_6rMLUBc5hLLX6BZpxh4gykJzMSww\",\"target\":\"production\"}')",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__execute_sql"
     ]
   }
 }

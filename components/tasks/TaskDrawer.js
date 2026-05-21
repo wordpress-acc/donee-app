@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase";
-import { canEditTask, canAssignTask } from "@/lib/permissions";
+import { canEditTask, canEditAllTaskFields, canAssignTask } from "@/lib/permissions";
 import { cn, truncate } from "@/lib/utils";
 import Avatar from "@/components/ui/Avatar";
 import PriorityTag from "@/components/ui/PriorityTag";
@@ -182,7 +182,7 @@ function SelectField({
 }
 
 // ── Main drawer ───────────────────────────────────────────────────────────────
-export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose, profile, workspaceMember, users }) {
+export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose, profile, workspaceMember, projects, users }) {
   const qc = useQueryClient();
   const overlayRef = useRef(null);
   const [descEditing, setDescEditing] = useState(false);
@@ -274,7 +274,9 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const canEdit = canEditTask(profile, task, workspaceMember);
+  const canEditStatus = canEditTask(profile, task, workspaceMember);
+  const taskProject = projects?.find((p) => p.id === task?.project_id) ?? task?.project ?? null;
+  const canEditAllFields = canEditAllTaskFields(profile, taskProject, workspaceMember);
   const canAssign = canAssignTask(profile, workspaceMember);
   const projectMembers = users ?? [];
 
@@ -374,12 +376,12 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
           <div className="flex-1 min-w-0">
-            {canEdit ? (
+            {canEditAllFields ? (
               <EditableField
                 label=""
                 value={task.title}
                 onSave={(v) => v && updateTask.mutate({ title: v })}
-                canEdit={canEdit}
+                canEdit={canEditAllFields}
               />
             ) : (
               <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
@@ -408,7 +410,7 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
               value={task.priority}
               options={priorityOptions}
               onChange={(v) => updateTask.mutate({ priority: v })}
-              canEdit={canEdit}
+              canEdit={canEditAllFields}
               renderOption={(v) => <PriorityTag priority={v} />}
             />
             <SelectField
@@ -416,7 +418,7 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
               value={task.status}
               options={statusOptions}
               onChange={(v) => v && updateTask.mutate({ status: v })}
-              canEdit={canEdit}
+              canEdit={canEditStatus}
               renderOption={(v) => <StatusTag status={v} />}
             />
           </div>
@@ -448,21 +450,21 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
             label="Estimation"
             value={task.estimation}
             onSave={(v) => updateTask.mutate({ estimation: v })}
-            canEdit={canEdit}
+            canEdit={canEditAllFields}
           />
           <EditableField
             label="URL"
             value={task.url}
             type="url"
             onSave={(v) => updateTask.mutate({ url: v })}
-            canEdit={canEdit}
+            canEdit={canEditAllFields}
           />
           <EditableField
             label="Deadline"
             value={task.deadline}
             type="date"
             onSave={(v) => updateTask.mutate({ deadline: v || null })}
-            canEdit={canEdit}
+            canEdit={canEditAllFields}
           />
 
           {/* Description — WYSIWYG */}
@@ -484,10 +486,10 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
               />
             ) : (
               <div
-                onClick={() => canEdit && setDescEditing(true)}
+                onClick={() => canEditAllFields && setDescEditing(true)}
                 className={cn(
                   "text-sm rounded-lg px-2 py-1.5 -mx-2 min-h-[40px]",
-                  canEdit &&
+                  canEditAllFields &&
                     "hover:bg-slate-100 dark:hover:bg-slate-700 cursor-text transition-colors",
                 )}
               >
@@ -498,7 +500,7 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
                   />
                 ) : (
                   <span className="text-slate-400 italic text-xs">
-                    {canEdit ? "Click to add description…" : "No description"}
+                    {canEditAllFields ? "Click to add description…" : "No description"}
                   </span>
                 )}
               </div>

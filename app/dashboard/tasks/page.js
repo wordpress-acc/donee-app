@@ -69,7 +69,7 @@ export default async function TasksPage({ searchParams }) {
   // Projects for filter dropdown — scoped by role
   let projectQuery = supabase
     .from('projects')
-    .select('id, name, color')
+    .select('id, name, color, project_managers(user_id)')
     .eq('workspace_id', workspaceId)
     .eq('is_archived', false)
     .order('name')
