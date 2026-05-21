@@ -457,7 +457,7 @@ export default function TaskDrawer({ task, taskNotFound = false, isOpen, onClose
             value={task.url}
             type="url"
             onSave={(v) => updateTask.mutate({ url: v })}
-            canEdit={canEditAllFields}
+            canEdit={canEditStatus}
           />
           <EditableField
             label="Deadline"
