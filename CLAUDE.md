@@ -115,6 +115,10 @@ supabase/
   migrations/004_fix_workspace_rls_recursion.sql  is_workspace_member() helper + non-recursive workspace RLS
   migrations/013_grant_workspace_tables.sql  Grants for workspace tables (Data API / PostgREST)
   migrations/022_multi_pm_per_project.sql    project_managers join table + RLS + data migration from pm_id
+  migrations/023_fix_tasks_update_rls_for_multi_pm.sql  tasks_update policy uses project_managers (not pm_id)
+  migrations/024_restrict_developer_task_field_updates.sql  Trigger: devs can only update status+url
+  migrations/025_fix_task_notes_select_for_developers.sql  task_notes RLS: devs see notes on assigned/created tasks
+  migrations/026_allow_developer_url_update.sql  Relaxes trigger to also allow url edits by devs
 ```
 
 ## Database Schema (Workspace-aware)
@@ -136,7 +140,7 @@ All tables have RLS enabled.
 
 - **project_members** — (id, project_id, user_id, joined_at) — UNIQUE(project_id, user_id)
 
-- **tasks** — (id, project_id, title, description, priority, status, assigned_to, created_by, estimation, url, created_at, updated_at)  
+- **tasks** — (id, project_id, title, description, priority, status, assigned_to, created_by, estimation, url, deadline, created_at, updated_at)  
   priority: `lowest|low|medium|high|critical`  
   status: `backlog|in_progress|estimation|review|done_in_staging|waiting_for_confirmation|paused|done`
 
@@ -147,6 +151,7 @@ DB Triggers:
 - `handle_task_note_mentions` — parses @name from note content, creates notification rows, populates mentions[]
 - `handle_task_insert_notification` — creates task_assigned notification on INSERT if assigned_to set
 - `handle_task_update_notification` — creates task_assigned notification when assigned_to changes
+- `check_task_field_update_restrictions` — BEFORE UPDATE trigger; developers can only change `status` and `url`; all other fields restricted to PM of that project + super_admin
 
 Realtime enabled on: `notifications`, `tasks`
 
@@ -228,12 +233,14 @@ import {
   isSuperAdmin,
   isPM,
   canEditTask,
+  canEditAllTaskFields,
   canAssignTask,
   canManageProject,
   canAccessAdmin,
 } from "@/lib/permissions";
 // All functions take profile object (from profiles table)
-// canEditTask(profile, task) — super_admin/pm always; dev if assigned_to or created_by
+// canEditTask(profile, task) — super_admin/pm always; dev if assigned_to or created_by (used for status+url)
+// canEditAllTaskFields(profile, project) — PM of that specific project + super_admin only (title/priority/desc/assignee/estimation/deadline)
 // canManageProject(profile, project) — checks project.project_managers array; falls back to pm_id
 ```
 
@@ -242,8 +249,8 @@ import {
 `super_admin` > `pm` > `developer`
 
 - super_admin: full access to everything
-- pm: manage own projects, assign tasks
-- developer: edit tasks assigned to them / created by them
+- pm: manage own projects, assign tasks, edit all task fields
+- developer: can only change `status` and `url` on tasks assigned to / created by them
 
 ## Notifications
 

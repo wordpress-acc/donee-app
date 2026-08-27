@@ -34,3 +34,7 @@ supabase/.branches/
 .vscode/
 .idea/
 .vercel
+
+# db migration scripts, dumps and secrets (local only)
+/scripts/
+/db-data.json
